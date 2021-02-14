@@ -1,0 +1,59 @@
+#!/usr/bin/expect -f
+
+# This script will set current time to
+# Xiaomi - Mi Temperature and Humidity Monitor Digital Clock
+# Brand: Mijia [Xiaomi Ecological Chain]
+# Model: LYWSD02MMC
+# CMIIT ID: 2019DP0124
+#
+# 00002a29-0000-1000-8000-00805f9b34fb (Manufacturer name string): miaomiaoce.com
+# 00002a24-0000-1000-8000-00805f9b34fb (Model number string): LYWSD02
+# 00002a27-0000-1000-8000-00805f9b34fb (Hardware revision string): F2_WF
+# 00002a26-0000-1000-8000-00805f9b34fb (Firmware revision string): 1.1.2_0085
+# 
+#
+# The time is taken from current unix timestamp
+#
+# Dialog SmartBond™ DA14585 (Smallest, lowest power and most integrated Bluetooth 5 SoC) 
+# is responsible for Bluetooth, the brains of the station itself are 
+# Shanghai Belling BM8563 (Real-time Clocks Clock / Calendar I2C 0.25uA @ 3V TSSOP-8 RoHS).
+
+
+if {[llength $argv] != 1} {
+  puts "usage: lywsd02mmc-set-clock.expect XX:XX:XX:XX:XX:XX"
+  puts "   where XX:XX:XX:XX:XX:XX is btle address of Mi Temperature and Humidity Monitor Digital Clock device"
+  exit
+}
+
+log_user 0
+
+set address [lindex $argv 0]
+
+set timeout -1
+
+# connect to device
+spawn gatttool -b $address -I
+send -- "connect\r"
+expect "Connection successful"
+
+# get current timestamp (unix timestamp)
+set ts [clock seconds]
+# convert timestamp to hex: AABBCCDD
+set hexts [format %08X $ts]
+# get current timezone
+set tz [string range [clock format $ts -format "%z"] 0 2]
+# convert timezone to signed byte
+set tz256 [expr {$tz & 0xFF}]
+# convert timezone to signed hex: ZZ
+set hextz [format %02X $tz256]
+# reverse timestamp bytes and append timezone: DDCCBBAAZZ
+set hextime "[string range $hexts 6 7][string range $hexts 4 5][string range $hexts 2 3][string range $hexts 0 1]$hextz"
+puts "setting $hextime"
+
+# primary: attr handle: 0x003c, end grp handle: 0x005a uuid: ebe0ccb0-7a0a-4b0c-8a1a-6ff2997da3a6
+# handle: 0x003d, char properties: 0x0e, char value handle: 0x003e, uuid: ebe0ccb7-7a0a-4b0c-8a1a-6ff2997da3a6
+send -- "char-write-req 0x003e $hextime\r"
+expect "Characteristic value was written successfully"
+send -- "disconnect\r"
+send -- "exit\r"
+expect eof
